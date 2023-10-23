@@ -87,26 +87,27 @@ func TestPlaceLimitOrderMultiFill(t *testing.T) {
 	ob := NewOrderBook()
 
 	// Place three buy limit orders
-	buyOrderA := NewOrder(true, 10) // Buy 3 at 10,000
-	//buyOrderB := NewOrder(true, 4) // Buy 4 at 10,000
-	//buyOrderC := NewOrder(true, 3) // Buy 3 at 10,000
+	buyOrderA := NewOrder(true, 8) // Buy 3 at 10,000
+	buyOrderB := NewOrder(true, 6) // Buy 4 at 10,000
+	buyOrderC := NewOrder(true, 3) // Buy 3 at 10,000
 
 	ob.PlaceLimitOrder(10_000, buyOrderA)
-	//ob.PlaceLimitOrder(10_000, buyOrderB)
-	//ob.PlaceLimitOrder(10_000, buyOrderC)
+	ob.PlaceLimitOrder(9_000, buyOrderB)
+	ob.PlaceLimitOrder(8_000, buyOrderC)
 
-	assert(t, ob.BidTotalVolume(), 10.0) // Total buy volume should be 10
+	assert(t, ob.BidTotalVolume(), 17.0) // Total buy volume should be 10
 
 	// Place a sell limit order
 	sellOrder := NewOrder(false, 10) // Sell 10 at 10,000
 	matches := ob.PlaceLimitOrder(9_000, sellOrder)
 
 	// Check that the sell order was matched with all the buy orders
-	assert(t, len(matches), 1)            // There should be three matches
-	assert(t, ob.BidTotalVolume(), 0.0)   // All buy orders should be filled, so volume is 0
-	assert(t, len(ob.bids), 0)            // No more buy orders left on the book
-	assert(t, len(ob.Asks()), 0)          // Sell order should be fully filled
+	assert(t, len(matches), 2)            // There should be three matches
+	assert(t, ob.BidTotalVolume(), 7.0)   // All buy orders should be filled, so volume is 0
 	assert(t, sellOrder.IsFilled(), true) // Sell order should be fully filled
+	assert(t, matches[0].Price, 10_000.0) // Price should jump to highest of 10,000
+	assert(t, matches[0].SizeFilled, 8.0) // 8 of the 10 sell order volume should be filled
+	assert(t, matches[1].Price, 9_000.0)  // Price should jump to 9_000 for remaining
 }
 
 func TestCancelOrder(t *testing.T) {
