@@ -94,8 +94,6 @@ func (ex *Exchange) handleGetBook(c echo.Context) error {
 
 	for _, limit := range ob.Asks() {
 		for _, order := range limit.Orders {
-			fmt.Println(order)
-
 			o := Order{
 				ID:        order.ID,
 				Price:     limit.Price,
@@ -103,15 +101,14 @@ func (ex *Exchange) handleGetBook(c echo.Context) error {
 				Bid:       order.Bid,
 				Timestamp: order.Timestamp,
 			}
-			fmt.Println(o)
 
 			orderbookData.Asks = append(orderbookData.Asks, &o)
 		}
-
 	}
 
 	for _, limit := range ob.Bids() {
 		for _, order := range limit.Orders { // Asks Array stores the limits -> Each limit stores the orders -> Each order stores the order data
+
 			o := Order{
 				ID:        order.ID,
 				Price:     limit.Price,
