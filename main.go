@@ -94,6 +94,8 @@ func (ex *Exchange) handleGetBook(c echo.Context) error {
 
 	for _, limit := range ob.Asks() {
 		for _, order := range limit.Orders {
+			fmt.Println(order)
+
 			o := Order{
 				ID:        order.ID,
 				Price:     limit.Price,
@@ -101,13 +103,15 @@ func (ex *Exchange) handleGetBook(c echo.Context) error {
 				Bid:       order.Bid,
 				Timestamp: order.Timestamp,
 			}
+			fmt.Println(o)
 
 			orderbookData.Asks = append(orderbookData.Asks, &o)
 		}
+
 	}
 
 	for _, limit := range ob.Bids() {
-		for _, order := range limit.Orders {
+		for _, order := range limit.Orders { // Asks Array stores the limits -> Each limit stores the orders -> Each order stores the order data
 			o := Order{
 				ID:        order.ID,
 				Price:     limit.Price,
@@ -148,7 +152,7 @@ type MatchedOrder struct {
 
 func (ex *Exchange) handlePlaceOrder(c echo.Context) error {
 	var placeOrderData PlaceOrderRequest
-
+	var matches []orderbook.Match
 	if err := json.NewDecoder(c.Request().Body).Decode(&placeOrderData); err != nil {
 		return err
 	}
@@ -158,34 +162,34 @@ func (ex *Exchange) handlePlaceOrder(c echo.Context) error {
 	order := orderbook.NewOrder(placeOrderData.Bid, placeOrderData.Size)
 
 	if placeOrderData.Type == LimitOrder {
-		ob.PlaceLimitOrder(placeOrderData.Price, order)
-		return c.JSON(200, map[string]any{"msg": "Limit order is Placed"})
+		matches = ob.PlaceLimitOrder(placeOrderData.Price, order)
+	} else {
+		matches = ob.PlaceMarketOrder(order)
 	}
 
-	if placeOrderData.Type == MarketOrder {
-		matches := ob.PlaceMarketOrder(order)
-		matchedOrders := make([]*MatchedOrder, len(matches))
+	matchedOrders := make([]*MatchedOrder, len(matches))
 
-		isBid := false
-		if order.Bid {
-			isBid = true
-		}
-
-		for i := 0; i < len(matchedOrders); i++ {
-			id := matches[i].Bid.ID
-			if isBid {
-				id = matches[i].Ask.ID
-			}
-
-			matchedOrders[i] = &MatchedOrder{
-				ID:    id,
-				Size:  matches[i].SizeFilled,
-				Price: matches[i].Price,
-			}
-		}
-
-		return c.JSON(200, map[string]any{"matches": matchedOrders})
+	isBid := false
+	if order.Bid {
+		isBid = true
 	}
 
-	return nil
+	for i := 0; i < len(matchedOrders); i++ {
+		id := matches[i].Bid.ID
+		if isBid {
+			id = matches[i].Ask.ID
+		}
+
+		matchedOrders[i] = &MatchedOrder{
+			ID:    id,
+			Size:  matches[i].SizeFilled,
+			Price: matches[i].Price,
+		}
+	}
+
+	if len(matches) == 0 {
+		return c.JSON(200, map[string]any{"msg": "Limit order placed!"})
+	}
+	return c.JSON(200, map[string]any{"matches": matchedOrders})
+
 }

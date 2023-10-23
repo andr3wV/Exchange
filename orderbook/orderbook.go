@@ -8,8 +8,8 @@ import (
 )
 
 type Match struct {
-	Ask        *Order
-	Bid        *Order
+	Ask        *Order // The asking price from a *seller*
+	Bid        *Order // The bidding price from a *buyer*
 	SizeFilled float64
 	Price      float64
 }
@@ -18,7 +18,7 @@ type Match struct {
 type Order struct {
 	ID        int64
 	Size      float64
-	Bid       bool
+	Bid       bool // Bid is a buy order, ask is a sell order
 	Limit     *Limit
 	Timestamp int64
 }
@@ -221,28 +221,68 @@ func (ob *Orderbook) PlaceMarketOrder(o *Order) []Match {
 }
 
 // An order for a specific price point.
-func (ob *Orderbook) PlaceLimitOrder(price float64, o *Order) {
+// PlaceLimitOrder places a limit order and returns any matches.
+func (ob *Orderbook) PlaceLimitOrder(price float64, o *Order) []Match {
 	var limit *Limit
+	matches := []Match{}
 
+	// If it's a buy order, look for matching sell orders (asks)
 	if o.Bid {
+		for _, askLimit := range ob.Asks() {
+			// Check if the buy order price is greater than or equal to the ask limit price
+			if price >= askLimit.Price {
+				limitMatches := askLimit.Fill(o)
+				matches = append(matches, limitMatches...)
+
+				if len(askLimit.Orders) == 0 {
+					ob.clearLimit(true, askLimit) // Clearing ask limit
+				}
+
+				if o.IsFilled() {
+					break
+				}
+			}
+		}
+
 		limit = ob.BidLimits[price]
-	} else {
+	} else { // If it's a sell order, look for matching buy orders (bids)
+		for _, bidLimit := range ob.Bids() {
+			// Check if the sell order price is less than or equal to the bid limit price
+			if price <= bidLimit.Price {
+				limitMatches := bidLimit.Fill(o)
+				matches = append(matches, limitMatches...)
+
+				if len(bidLimit.Orders) == 0 {
+					ob.clearLimit(false, bidLimit) // Clearing bid limit
+					fmt.Println("Cleared bid limit")
+				}
+
+				if o.IsFilled() {
+					break
+				}
+			}
+		}
+
 		limit = ob.AskLimits[price]
 	}
 
-	if limit == nil {
-		limit = NewLimit(price)
+	// If the limit wasn't filled and doesn't exist, create it
+	if !o.IsFilled() {
+		if limit == nil {
+			limit = NewLimit(price)
 
-		if o.Bid {
-			ob.bids = append(ob.bids, limit)
-			ob.BidLimits[price] = limit
-		} else {
-			ob.asks = append(ob.asks, limit)
-			ob.AskLimits[price] = limit
+			if o.Bid {
+				ob.bids = append(ob.bids, limit)
+				ob.BidLimits[price] = limit
+			} else {
+				ob.asks = append(ob.asks, limit)
+				ob.AskLimits[price] = limit
+			}
 		}
+		ob.Orders[o.ID] = o
+		limit.AddOrder(o)
 	}
-	ob.Orders[o.ID] = o
-	limit.AddOrder(o)
+	return matches // Return the matches, will be empty if no matches occurred
 }
 
 func (ob *Orderbook) clearLimit(bid bool, l *Limit) {
@@ -252,6 +292,7 @@ func (ob *Orderbook) clearLimit(bid bool, l *Limit) {
 			if ob.bids[i] == l {
 				ob.bids[i] = ob.bids[len(ob.bids)-1]
 				ob.bids = ob.bids[:len(ob.bids)-1]
+				break
 			}
 		}
 	} else {
@@ -260,6 +301,7 @@ func (ob *Orderbook) clearLimit(bid bool, l *Limit) {
 			if ob.asks[i] == l {
 				ob.asks[i] = ob.asks[len(ob.asks)-1]
 				ob.asks = ob.asks[:len(ob.asks)-1]
+				break
 			}
 		}
 	}
